@@ -1,4 +1,5 @@
 """Работа с категориями расходов"""
+import logging
 from typing import Dict, List, NamedTuple
 
 import db
@@ -15,6 +16,7 @@ class Category(NamedTuple):
 class Categories:
     def __init__(self):
         self._categories = self._load_categories()
+       
 
     def _load_categories(self) -> List[Category]:
         """Возвращает справочник категорий расходов из БД"""
@@ -60,3 +62,6 @@ class Categories:
         if not finded:
             finded = other_category
         return finded
+    
+logging.info(f"Loaded categories: {Categories().get_all_categories()}")
+

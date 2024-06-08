@@ -26,7 +26,24 @@ dp = Dispatcher(bot)
 
 service = get_service()
 
+SCAM_TIPS = [
+    "Never share your personal or financial information over the phone or email.",
+    "Beware of unsolicited messages or calls asking for your financial details.",
+    "Always verify the authenticity of a website before making any transactions.",
+    "Use strong passwords and enable two-factor authentication on your accounts.",
+    "Monitor your bank statements regularly for any unauthorized transactions.",
+]
 
+def get_recommendations(spending_data):
+    recommendations = []
+    total_expense = sum(float(row[1]) for row in spending_data if row[2] == 'expense')
+    if total_expense > 1000:
+        recommendations.append("Consider reducing your daily expenses to save more.")
+    if any(float(row[1]) > 500 for row in spending_data if row[2] == 'expense'):
+        recommendations.append("Try to avoid large expenses and spread them out over time.")
+    if not recommendations:
+        recommendations.append("Great job! Keep up the good work with your spending habits.")
+    return recommendations
 
 @dp.message_handler(commands=['start', 'help'])
 async def send_welcome(message: types.Message):
@@ -38,16 +55,24 @@ async def send_welcome(message: types.Message):
         "Today's statistics: /today\n"
         "Current month's statistics: /month\n"
         "Last added expenses: /expenses\n"
-        "Categories: /categories")
+        "Categories: /categories\n"
+        "Google Sheets Data: /data\n"
+        "Personalized Recommendations: /recommend\n"
+        "Scam Tips: /scam_tips")
 
 @dp.message_handler(commands=['data'])
 async def send_data(message: types.Message):
     """Fetches and sends data from Google Sheets"""
     logging.info("Received /data command")
     data = get_data(service)
+    logging.info(f"Data retrieved: {data}")  # Added logging to verify data retrieval
+    if not data:
+        await message.answer("No data found in your Google Sheets.")
+        return
     response = "Data from Google Sheets:\n"
     for row in data:
         response += ", ".join(row) + "\n"
+    logging.info(f"Sending data response: {response}")  # Log the response being sent
     await message.answer(response)
 
 @dp.message_handler(lambda message: message.text.startswith('/add '))
@@ -117,7 +142,56 @@ async def list_expenses(message: types.Message):
     answer_message = "Последние сохранённые траты:\n\n* " + "\n\n* "\
             .join(last_expenses_rows)
     await message.answer(answer_message)
+    
+def get_data(service, range_name='Worksheet!A1:C10'):
+    sheet = service.spreadsheets()
+    result = sheet.values().get(spreadsheetId='1WgppSJbepP9hUlm_PDjmNkgVqXNrXadzsxut44JVkQU', range=range_name).execute()
+    values = result.get('values', [])
+    logging.info(f"Retrieved data: {values}")  # Log the retrieved data
+    return values
 
+@dp.message_handler(commands=['recommend'])
+async def send_recommendations(message: types.Message):
+    """Provides personalized recommendations based on spending data"""
+    logging.info("Received /recommend command")
+    # Fetch user data from Google Sheets
+    range_name = 'Worksheet!A1:C10'  # Adjust the range as necessary
+    data = get_data(service, range_name)
+    logging.info(f"Data retrieved for recommendations: {data}")  # Added logging to verify data retrieval
+    if not data:
+        await message.answer("No data found in your Google Sheets.")
+        return
+    
+    # Analyze the data to generate recommendations
+    total_income = sum(float(row[1]) for row in data if row[2] == 'income')
+    total_expense = sum(float(row[1]) for row in data if row[2] == 'expense')
+    
+    recommendations = f"Total Income: {total_income}\nTotal Expense: {total_expense}\n"
+    
+    if total_expense > total_income:
+        recommendations += "Your expenses exceed your income. Consider reducing your spending or increasing your income."
+    else:
+        recommendations += "Good job! Your income exceeds your expenses."
+    
+    logging.info(f"Sending recommendations: {recommendations}")  # Log the recommendations
+    await message.answer(recommendations)
+
+
+@dp.message_handler(commands=['avoid_scams'])
+async def send_avoid_scams_tips(message: types.Message):
+    """Provides tips on avoiding financial scams"""
+    logging.info("Received /avoid_scams command")
+    
+    tips = (
+        "Here are some tips to avoid online financial scams:\n"
+        "1. Be cautious of unsolicited emails or messages.\n"
+        "2. Avoid clicking on links from unknown sources.\n"
+        "3. Verify the legitimacy of the sender or website.\n"
+        "4. Use strong, unique passwords for online accounts.\n"
+        "5. Monitor your financial accounts regularly.\n"
+        "6. Be wary of offers that seem too good to be true."
+    )
+    await message.answer(tips)
 
 @dp.message_handler()
 async def add_expense(message: types.Message):
@@ -125,6 +199,7 @@ async def add_expense(message: types.Message):
     logging.info(f"Received message to add expense: {message.text}")
     try:
         expense = expenses.add_expense(message.text)
+        logging.info(f"Expense added: {expense}")
     except exceptions.NotCorrectMessage as e:
         logging.error(f"Error adding expense: {e}")
         await message.answer(str(e))
@@ -133,6 +208,7 @@ async def add_expense(message: types.Message):
         f"Добавлены траты {expense.amount} руб на {expense.category_name}.\n\n"
         f"{expenses.get_today_statistics()}")
     await message.answer(answer_message)
+
 
 
 if __name__ == '__main__':

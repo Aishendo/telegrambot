@@ -1,7 +1,7 @@
-""" Работа с расходами — их добавление, удаление, статистики"""
 import datetime
 import re
 from typing import List, NamedTuple, Optional
+import logging
 
 import pytz
 
@@ -27,17 +27,24 @@ def add_expense(raw_message: str) -> Expense:
     """Добавляет новое сообщение.
     Принимает на вход текст сообщения, пришедшего в бот."""
     parsed_message = _parse_message(raw_message)
-    category = Categories().get_category(
-        parsed_message.category_text)
+    logging.info(f"Parsed message: {parsed_message}")
+
+    category = Categories().get_category(parsed_message.category_text)
+    if category is None:
+        logging.error(f"Category not found for text: {parsed_message.category_text}")
+        raise exceptions.NotCorrectMessage(
+            "Не могу найти категорию. Используйте одну из существующих категорий.")
+    
+    logging.info(f"Category found: {category}")
+
     inserted_row_id = db.insert("expense", {
         "amount": parsed_message.amount,
         "created": _get_now_formatted(),
         "category_codename": category.codename,
         "raw_text": raw_message
     })
-    return Expense(id=None,
-                   amount=parsed_message.amount,
-                   category_name=category.name)
+    logging.info(f"Inserted row ID: {inserted_row_id}")
+    return Expense(id=None, amount=parsed_message.amount, category_name=category.name)
 
 
 def get_today_statistics() -> str:
@@ -104,16 +111,19 @@ def delete_expense(row_id: int) -> None:
 
 def _parse_message(raw_message: str) -> Message:
     """Парсит текст пришедшего сообщения о новом расходе."""
+    logging.info(f"Parsing message: {raw_message}")
     regexp_result = re.match(r"([\d ]+) (.*)", raw_message)
     if not regexp_result or not regexp_result.group(0) \
             or not regexp_result.group(1) or not regexp_result.group(2):
+        logging.error(f"Failed to parse message: {raw_message}")
         raise exceptions.NotCorrectMessage(
             "Не могу понять сообщение. Напишите сообщение в формате, "
             "например:\n1500 метро")
 
     amount = regexp_result.group(1).replace(" ", "")
     category_text = regexp_result.group(2).strip().lower()
-    return Message(amount=amount, category_text=category_text)
+    logging.info(f"Parsed message - Amount: {amount}, Category: {category_text}")
+    return Message(amount=int(amount), category_text=category_text)
 
 
 def _get_now_formatted() -> str:
